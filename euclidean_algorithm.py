@@ -6,6 +6,7 @@ from typing import List
 
 __all__ = [
   'simple_euclidean_algorithm',
+  'least_common_multiple',
   'print_euclidean_algorithm_table',
   'AlgorithmStep',
   'generate_algorithm_steps',
@@ -26,6 +27,15 @@ def simple_euclidean_algorithm(a: int, b: int) -> int:
   while b > 0:
     a, b = b, a % b
   return a
+
+def least_common_multiple(a: int, b: int) -> int:
+  """
+  Find the LCM [a, b] of integers a and b, using the formula (a,b) * [a,b] = |ab|
+  """
+  assert a > 0 and b > 0
+  ab = a * b
+  gcd = simple_euclidean_algorithm(a, b)
+  return ab // gcd
 
 def print_euclidean_algorithm_table(a: int, b: int, padding=DEFAULT_PADDING) -> None:
   """
