@@ -132,10 +132,10 @@ def print_steps(steps: List[AlgorithmStep], padding: int) -> None:
 
   def print_step(quotient, remainder, x, y):
     print('{:>{col1_width}}{:>{col2_width}}{:>{col3_width}}{:>{col4_width}}'.format(
-      str(quotient) if quotient is not None else '',
-      str(remainder),
-      str(x),
-      str(y),
+      quotient if quotient is not None else '',
+      remainder,
+      x,
+      y,
       col1_width=col1_width,
       col2_width=col2_width,
       col3_width=col3_width,
