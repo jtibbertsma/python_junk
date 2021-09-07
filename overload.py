@@ -8,24 +8,22 @@ class OverloadedBoundMethod:
         self.func = func
         self.obj = obj
 
+    def __repr__(self):
+        return f'OverloadedBoundMethod(obj={self.obj}, func={self.func})'
+
     def __call__(self, *args):
         return self.func(self.obj, *args)
 
 class OverloadedFunc:
     update_wrapper = functools.update_wrapper
 
-    @classmethod
-    def create(cls, cls_name, func):
-        """Create an OverloadedFunc wrapping func"""
-        self = cls(cls_name)
-        self.add_new_overload(func)
-        self.update_wrapper(func)
-        return self
-
     def __init__(self, cls_name):
         self.cls_name = cls_name
         # Map number of args to callables
         self.overload_map = {}
+
+    def __repr__(self):
+        return f'OverloadedFunc(overload_map={self.overload_map})'
 
     def __get__(self, obj, _):
         return OverloadedBoundMethod(self, obj)
@@ -34,11 +32,13 @@ class OverloadedFunc:
         numargs = len(args)
         func = self.overload_map.get(numargs, None)
         if func is None:
-            raise TypeError(f'No version of method "{self.__qualname__}" in '
-                            f'class "{self.cls_name}" with {numargs - 1} args')
+            raise AttributeError(f'No version of method "{self.__name__}" in '
+                                 f'class "{self.cls_name}" with {numargs - 1} args')
         return func(*args)
 
     def add_new_overload(self, func):
+        if not hasattr(self, '__name__'):
+            self.update_wrapper(func)
         self.overload_map[self.compute_arity(func)] = func
 
     def copy(self):
@@ -59,6 +59,9 @@ class OverloadDict(dict):
         self.cls_name = cls_name
         self['__setattr__'] = self._overload_setattr()
 
+    def __repr__(self):
+        return f'OverloadDict({super().__repr__()})'
+
     def __setitem__(self, key, value):
         """Set the dict item, constructing an OverloadedFunc if needed."""
         if (descr := self._get_descr(key, value)):
@@ -69,6 +72,11 @@ class OverloadDict(dict):
     def _overload_setattr(self):
         """Build the __setattr__ method for the Overload class"""
         def __setattr__(overload_obj, attr, value):
+            """Handle case where a function is written to an instance
+            ex:
+            >>> obj = Overload()
+            >>> Overload.foo = lambda self, x: x
+            """
             if (descr := self._get_descr(attr, value)):
                 descr = descr.copy()
                 descr.add_new_overload(value)
@@ -80,13 +88,14 @@ class OverloadDict(dict):
         return __setattr__
 
     def _get_descr(self, key, value):
-        """If value is callable and there is a callable in the dict
-        corresponding to key, return the value in the dict wrapped
-        with OverloadedFunc. Otherwise, return None.
+        """If value is callable, either construct a new empty
+        OverloadFunc or return an old OverloadFunc corresponding to key.
 
         Since this implementation relies on the definition of __setattr__
         on the user class, raise a TypeError if the user class tries to
-        overwrite __setattr__.
+        overwrite __setattr__. Since __setattr__ is skipped, all methods
+        except for __setattr__ are wrapped in OverloadFunc, including
+        __init__ and any non-overloaded methods.
         """
         prev = self.get(key, None)
         # The `prev is not None` check here prevents us from raising
@@ -97,13 +106,34 @@ class OverloadDict(dict):
         if callable(value):
             if isinstance(prev, OverloadedFunc):
                 return prev
-            if callable(prev):
-                return OverloadedFunc.create(self.cls_name, prev)
+            return OverloadedFunc(self.cls_name)
         return None
 
 class Meta(type):
+    DICTATTR = '__overload_dict__'
+
     def __prepare__(name, _):
         return OverloadDict(name)
+
+    def __new__(metacls, name, bases, ns):
+        cls = super().__new__(metacls, name, bases, ns)
+        # On class creation, python copies ns (the OverloadDict)
+        # into a normal dict. Save a reference to the OverloadDict
+        # so we can use it in __setattr__
+        setattr(cls, metacls.DICTATTR, ns)
+        return cls
+
+    def __setattr__(cls, attr, value):
+        """Handle case where a function is written to the class
+        ex:
+        >>> Overload.foo = lambda self, x: x
+        """
+        if attr == cls.DICTATTR:
+            return super().__setattr__(attr, value)
+        # Use the OverloadDict logic
+        ns = getattr(cls, cls.DICTATTR)
+        ns[attr] = value
+        return super().__setattr__(attr, ns[attr])
 
 class Overload(metaclass=Meta):
     
@@ -148,4 +178,16 @@ if __name__ == '__main__':
 
     obj.foo = lambda self, a, b, c, d: 'Hello'
 
+    print(obj.foo())
     print(obj.foo(1,2,3,4))
+
+    def class_foo(self, a, b, c, d):
+        return 'Setting attr on class works'
+
+    Overload.foo = class_foo
+
+    print(obj.foo())
+    print(obj.foo(1))
+    print(obj.foo(1, 2))
+    print(obj.foo(1, 2, 3))
+    print(obj.foo(1, 2, 3, 4))
