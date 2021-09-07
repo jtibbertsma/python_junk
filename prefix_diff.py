@@ -10,6 +10,9 @@ class Constant(float):
     def derivative(cls):
         return cls(0)
 
+    def distribute(self):
+        return self
+
     def reciprocal(self):
         """Get reciprocal: c.reciprocal() == 1 / c"""
         return Constant(1 / float(self))
@@ -41,13 +44,16 @@ class Term:
             return cls(self.coef * self.power, self.power - 1)
         return Constant(self.coef)
 
+    def distribute(self):
+        return self
+
     def reciprocal(self):
         cls = type(self)
         return cls(1 / self.coef, self.power)
 
     def __str__(self):
         inner = 'x' if self.power == 1 else f'(^ x {self.power})'
-        return inner if self.coef == 1 else f'(* {self.coef} {self.inner})'
+        return inner if self.coef == 1 else f'(* {self.coef} {inner})'
 
     def __add__(self, other):
         if not isinstance(other, Term):
@@ -70,8 +76,7 @@ class operation:
     """Method decorator allowing registration of different behaviors depending
     on the equation's operator. Similar behavior to functools.singledispatchmethod,
     except it works by passing a string to the registration function instead
-    of a type. Used for the methods `simplify` and `derivative` on the Equation
-    class, which have different behaviors depending on the operator.
+    of a type.
     """
     def __init__(self, method):
         update_wrapper(self, method)
@@ -131,10 +136,9 @@ class Equation:
             elif token == ')':
                 break
             else:
-                raise ValueError(f'unknown token {token}')
+                raise ValueError(f'unknown token `{token}`')
 
-        equation = cls(operator, terms)
-        return equation.simplify()
+        return cls(operator, terms).simplify().distribute()
 
     @classmethod  
     def parse(cls, s):
@@ -206,13 +210,16 @@ class Equation:
     @simplify.register('*')
     def _(self):
         # Take the product of everything that isn't an equation
-        newterms = [term for term in self.terms if isinstance(term, Equation)]
+        newterms = []
+        equation_terms     = (term for term in self.terms
+                                   if isinstance(term, Equation))
         non_equation_terms = (term for term in self.terms 
                                    if not isinstance(term, Equation))
         term_product = reduce(operator.mul, non_equation_terms, Constant(1))
 
         if isinstance(term_product, Term) or term_product != 1:
             newterms.append(term_product)
+        newterms.extend(equation_terms)
         if len(newterms) == len(self.terms):
             return self
         if len(newterms) == 1:
@@ -226,6 +233,28 @@ class Equation:
     def _(self):
         # Invert terms after the first and apply *
         return self.inverted_simplify('/', '*', lambda term: term.reciprocal())
+
+    @simplify.register('^')
+    def _(self):
+        if isinstance(self.terms[0], Term) and isinstance(self.terms[1], Constant):
+            return Term(self.terms[0].coef ** self.terms[1],
+                        self.terms[0].power * self.terms[1])
+        return self
+
+    @operation
+    def distribute(self):
+        return self
+
+    @distribute.register('*')
+    def _(self):
+        if   (len(self.terms) == 2 and
+              isinstance(self.terms[0], (Term, Constant)) and 
+              isinstance(self.terms[1], Equation) and
+              self.terms[1].operator == '+'):
+            newterms = [self.terms[0] * term for term in self.terms[1].terms]
+            cls = type(self)
+            return cls('+', newterms)
+        return self
 
     @operation
     def derivative(self):

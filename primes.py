@@ -1,6 +1,37 @@
 from itertools import count, islice
 from functools import singledispatchmethod
-from math import sqrt
+from math import isqrt
+
+def allprimes():
+    """Iterate through every prime number"""
+    yield from (2, 3, 5, 7)
+    mark_to_step = {}      # mapping from position in sieve (k) to a prime
+    subsieve = allprimes() # primes from the recursive sieve are used
+                           # to mark composites in the current sieve
+    next(subsieve)
+    sieve_factor = next(subsieve)
+    prime_squared = sieve_factor * sieve_factor # == 9
+
+    for k in count(prime_squared, 2):  # every odd number starting at 9
+        if k in mark_to_step:
+            # Mark the next composite of this prime
+            step = mark_to_step.pop(k)
+        elif k < prime_squared:
+            # k wasn't marked by the sieve, so it's prime
+            yield k
+            continue
+        else:
+            # k == prime_squared
+            # Add the next prime (sqrt k) to the sieve and mark
+            # its next multiple that hasn't been found yet
+            step = 2 * sieve_factor
+            sieve_factor = next(subsieve)
+            prime_squared = sieve_factor * sieve_factor
+
+        k += step
+        while k in mark_to_step:
+            k += step
+        mark_to_step[k] = step
 
 class PrimeMeta(type):
     """Make the Primes class subscriptable"""
