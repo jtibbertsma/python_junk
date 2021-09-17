@@ -1,28 +1,33 @@
-"""Print a truth table of a sympy logical expression"""
+"""Print a truth table of a sympy logical expression.
+
+Note that sympy has no equivalence logical operator. Xnor has
+the same truth table as equivalence, so when printing expressions,
+we try to detect a negated Xor and transform its repr to an equivalence
+operator.
+
+To construct equivalences, use
+>>> from sympy.logic.boolalg import Xnor as Equiv
+
+We also transform the Implies repr to use `->` when printing.
+"""
 
 from functools import singledispatchmethod
 from itertools import chain, product
 
 from sympy import Symbol, S, sympify
-from sympy.logic.boolalg import BooleanFunction, Implies
+from sympy.logic.boolalg import BooleanFunction, Implies, Not, Xor, And, Or
 
 from tabulate import tabulate
 
 
-__all__ = ['truth_table', 'TruthTable']
+__all__ = ['truth_table', 'TruthTable', 'TruthTableBase', 'BoolfuncReprMixin']
 
-def truth_table(expr: BooleanFunction, /, tablefmt='fancy_grid', **kwds) -> None:
-    """Prints a truth table for BooleanFunction expr.
-    
-    The tablefmt arg is passed to the tabulate library when formatting,
-    see the tabulate docs for valid values.
+class TruthTableBase:
+    @staticmethod
+    def boolfunc_repr(expr: BooleanFunction) -> str:
+        return repr(expr)
 
-    Other keyword args are passed to the print function.
-    """
-    print(TruthTable(expr, tablefmt=tablefmt), **kwds)
-
-class TruthTable:
-    def __init__(self, expr: BooleanFunction, /, tablefmt='fancy_grid') -> None:
+    def __init__(self, expr: BooleanFunction, *, tablefmt='fancy_grid') -> None:
         if isinstance(expr, str):
             expr = sympify(expr)
         if not isinstance(expr, BooleanFunction):
@@ -55,6 +60,7 @@ class TruthTable:
     def __repr__(self):
         return tabulate(self.rows, headers=self.headers, tablefmt=self.tablefmt)
 
+class BoolfuncReprMixin:
     @singledispatchmethod
     @staticmethod
     def boolfunc_repr(expr) -> str:
@@ -63,4 +69,47 @@ class TruthTable:
     @boolfunc_repr.register(Implies)
     @classmethod
     def _(cls, expr):
-        return '(' + ' -> '.join(cls.boolfunc_repr(arg) for arg in expr.args) + ')'
+        return f'({cls.binary_repr(expr, "->")})'
+
+    @boolfunc_repr.register(Not)
+    @classmethod
+    def _(cls, expr):
+        subexpr = expr.args[0]
+        if isinstance(subexpr, Xor):
+            # Detected Xnor, print as equivalence operator
+            return cls.binary_repr(subexpr, '<->')
+        if isinstance(subexpr, (Symbol, Implies)):
+            return f'~{cls.boolfunc_repr(subexpr)}'
+        return f'~({cls.boolfunc_repr(subexpr)})'
+
+    @boolfunc_repr.register(And)
+    @classmethod
+    def _(cls, expr):
+        return cls.binary_repr(expr, '&')
+
+    @boolfunc_repr.register(Or)
+    @classmethod
+    def _(cls, expr):
+        return cls.binary_repr(expr, '|')
+
+    @boolfunc_repr.register(Xor)
+    @classmethod
+    def _(cls, expr):
+        return cls.binary_repr(expr, '^')
+
+    @classmethod
+    def binary_repr(cls, expr, op):
+        return f' {op} '.join(cls.boolfunc_repr(arg) for arg in expr.args)
+
+class TruthTable(BoolfuncReprMixin, TruthTableBase):
+    pass
+
+def truth_table(expr, *, tablefmt='fancy_grid', table=TruthTable, **kwds) -> None:
+    """Prints a truth table for BooleanFunction expr.
+    
+    The tablefmt arg is passed to the tabulate library when formatting,
+    see the tabulate docs for valid values.
+
+    Extra keyword args are passed to the print function.
+    """
+    print(table(expr, tablefmt=tablefmt), **kwds)
