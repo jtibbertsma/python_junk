@@ -20,7 +20,7 @@ from sympy.logic.boolalg import BooleanFunction, Implies, Not, Xor, And, Or
 from tabulate import tabulate
 
 
-__all__ = ['truth_table', 'TruthTable', 'TruthTableBase', 'BoolfuncReprMixin']
+__all__ = ['truth_table', 'TruthTable', 'TruthTableBase', 'BoolfuncRepr']
 
 DEFAULT_TABLEFMT = 'fancy_grid'
 
@@ -37,9 +37,9 @@ class TruthTableBase:
     def boolfunc_repr(expr: BooleanFunction) -> str:
         return repr(expr)
 
-    def __init__(self, expr: BooleanFunction, *, tablefmt=DEFAULT_TABLEFMT) -> None:
+    def __init__(self, expr: BooleanFunction, *, tablefmt=DEFAULT_TABLEFMT):
         if isinstance(expr, str):
-            expr = sympify(expr)
+            expr = sympify(expr.replace('->', '>>'))
         if not isinstance(expr, BooleanFunction):
             raise TypeError('TruthTable expects BooleanFunction instances, '
                            f'not `{type(expr)}`')
@@ -70,7 +70,7 @@ class TruthTableBase:
     def __repr__(self):
         return tabulate(self.rows, headers=self.headers, tablefmt=self.tablefmt)
 
-class BoolfuncReprMixin:
+class BoolfuncRepr:
     @singledispatchmethod
     @staticmethod
     def boolfunc_repr(expr) -> str:
@@ -121,10 +121,10 @@ class BoolfuncReprMixin:
     def _(cls, expr):
         return cls.binary_repr(expr, '->')
 
-class TruthTable(BoolfuncReprMixin, TruthTableBase):
+class TruthTable(BoolfuncRepr, TruthTableBase):
     pass
 
-def truth_table(expr, *, tablefmt=DEFAULT_TABLEFMT, table=TruthTable, **kwds) -> None:
+def truth_table(expr: BooleanFunction, *, tablefmt=DEFAULT_TABLEFMT, table=TruthTable, **kwds):
     """Prints a truth table for BooleanFunction expr.
     
     The tablefmt arg is passed to the tabulate library when formatting,
@@ -133,3 +133,9 @@ def truth_table(expr, *, tablefmt=DEFAULT_TABLEFMT, table=TruthTable, **kwds) ->
     Extra keyword args are passed to the print function.
     """
     print(table(expr, tablefmt=tablefmt), **kwds)
+
+if __name__ == '__main__':
+    import sys
+
+    for expr in sys.argv[1:]:
+        truth_table(expr)
