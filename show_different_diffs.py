@@ -131,13 +131,19 @@ def main(*, react_dir: str):
     threadpool = Threadpool(target=Worker(work, results))
     threadpool.start()
 
-    enqueue_work(work.put, react_dir)
+    try:
+        enqueue_work(work.put, react_dir)
+        work.join()
 
-    work.join()
-    threadpool.kill()
-
-    for result in results:
-        print(result)
+        if results:
+            for result in results:
+                print(result)
+        else:
+            print('No non trivial differences found!')
+    except RuntimeError as e:
+        print(f'Error: {e}')
+    finally:
+        threadpool.kill()
 
 if __name__ == '__main__':
     main(react_dir=sys.argv[1])
