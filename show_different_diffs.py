@@ -63,7 +63,7 @@ def enqueue_work(enqueue: Callable[[Command], None], react_dir: str):
 
 
 def main(*, react_dir: str):
-    work = []
+    work: list[Command] = []
     enqueue_work(work.append, react_dir)
 
     results = []
@@ -79,7 +79,11 @@ def main(*, react_dir: str):
         print("No non-trivial differences found!")
 
 if __name__ == '__main__':
-    main(react_dir=sys.argv[1])
+    try:
+        react_dir = sys.argv[1]
+    except IndexError:
+        raise RuntimeError('Missing React source directory') from None
+    main(react_dir=react_dir)
 
 # Result: There are no non-trivial differences
 # 2022-01-26
